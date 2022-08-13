@@ -2,24 +2,16 @@
 Run commands to profile your Rust program
 
 ## Quickstart
+
+There are two versions, one will run on your cargo targets:
 ```bash
 cargo install cargo-prof
-cargo prof
-```
-
-## Valgrind
-Linux only, won't work on windows 
-
-Get the total bytes allocated to the heap by your Rust binary
-```bash
 cargo prof valgrind bytes
+cargo prof valgrind bytes --bin other_bin
 ```
-Target a different binary
+And the other will run on any binary:
 ```bash
-cargo prof valgrind bytes mybinary
-```
-Change the default bytes that are subtracted
-```bash
-cargo prof valgrind bytes mybinary
+cargo install prof
+prof valgrind bytes --bin mybin
 ```
 
