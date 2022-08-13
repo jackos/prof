@@ -1,5 +1,5 @@
 [package]
-name = "prof"
+name = "cargo-prof"
 description = "Tools to make profiling Rust programs easier"
 version = "0.1.0"
 edition = "2021"
@@ -7,7 +7,7 @@ license = "MIT"
 readme = "README.md"
 homepage = "https://github.com/jackos/prof"
 repository = "https://github.com/jackos/prof"
-keywords = ["profile", "subcommmand", "profiling"]
+keywords = ["cargo", "profile", "subcommmand", "profiling"]
 
 [dependencies]
 cargo_metadata = "0.15.0"
@@ -15,3 +15,4 @@ clap = { version = "3.2.17", features = ["derive"] }
 color-eyre = "0.6.2"
 human_bytes = "0.3.1"
 regex = "1.6.0"
+prof = {path=".."}

@@ -83,6 +83,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "cargo-prof"
+version = "0.1.0"
+dependencies = [
+ "cargo_metadata",
+ "clap",
+ "color-eyre",
+ "human_bytes",
+ "prof",
+ "regex",
+]
+
+[[package]]
 name = "cargo_metadata"
 version = "0.15.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
