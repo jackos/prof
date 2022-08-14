@@ -1,7 +1,7 @@
 [package]
 name = "cargo-prof"
 description = "Tools to make profiling Rust programs easier"
-version = "0.1.4"
+version = "0.1.5"
 edition = "2021"
 license = "MIT"
 readme = "../README.md"
@@ -20,4 +20,4 @@ serde_yaml = "0.9.9"
 tracing = { version = "0.1.36", features = ["log"] }
 tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }
 
-prof = {path="..", version = "0.1.4"}
+prof = {path="..", version = "0.1.5"}

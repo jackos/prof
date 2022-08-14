@@ -1,23 +1,14 @@
+pub mod types;
+pub mod utils;
+
 use clap::{Args, Parser, Subcommand};
-use color_eyre::{
-    eyre::{bail, eyre, Context},
-    Help, Result,
-};
-use regex::{Captures, Match, SubCaptureMatches};
-use serde::{Deserialize, Serialize};
-use std::{ops::Deref, process::Command};
-use tracing::warn;
-pub fn check_commands(commands: &[&str]) -> Result<()> {
-    for command in commands {
-        Command::new(command)
-            .output()
-            .context(format!("Command: {command} not found"))
-            .with_suggestion(|| {
-                format!("make sure {command} is installed and it's on your path: https://command-not-found.com/{command}")
-            })?;
-    }
-    Ok(())
-}
+use color_eyre::eyre::{bail, Context};
+use color_eyre::Result;
+use types::{HeapSummary, LeakSummary};
+use utils::{check_commands, parse_output_line, Capture};
+
+use crate::types::{HeapSummaryHuman, LeakSummaryHuman};
+use crate::utils::human_bytes;
 
 #[derive(Parser, Debug)]
 #[clap(version)]
@@ -49,61 +40,13 @@ pub enum Commands {
 }
 
 #[derive(Args, Clone, Debug)]
-#[clap(name = "new")]
 pub struct Leak {}
 
 #[derive(Args, Clone, Debug)]
-#[clap(name = "new")]
 pub struct Heap {
     /// Subtract bytes from total allocated
     #[clap(short, long, default_value_t = 0)]
     pub subtract_bytes: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HeapSummary {
-    pub allocated_total: i64,
-    pub frees: i64,
-    pub allocations: i64,
-    pub allocated_at_exit: i64,
-    pub blocks_at_exit: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HeapSummaryHuman {
-    pub allocated_total: String,
-    pub frees: i64,
-    pub allocations: i64,
-    pub allocated_at_exit: String,
-    pub blocks_at_exit: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct LeakSummary {
-    pub definitely_lost: i64,
-    pub indirectly_lost: i64,
-    pub possibly_lost: i64,
-    pub still_reachable: i64,
-    pub supressed: i64,
-    pub definitely_lost_blocks: i64,
-    pub indrectly_lost_blocks: i64,
-    pub possibly_lost_blocks: i64,
-    pub still_reachable_blocks: i64,
-    pub supressed_blocks: i64,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-pub struct LeakSummaryHuman {
-    pub definitely_lost: String,
-    pub indirectly_lost: String,
-    pub possibly_lost: String,
-    pub still_reachable: String,
-    pub supressed: String,
-    pub definitely_lost_blocks: i64,
-    pub indrectly_lost_blocks: i64,
-    pub possibly_lost_blocks: i64,
-    pub still_reachable_blocks: i64,
-    pub supressed_blocks: i64,
 }
 
 pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String> {
@@ -142,11 +85,11 @@ pub fn heap(
     let mut total = total_cap.iter_next();
 
     let heap_usage = HeapSummary {
-        allocated_at_exit: parse_valgrind("in use at exit", exit.next()),
-        blocks_at_exit: parse_valgrind("in use at exit blocks", exit.next()),
-        allocations: parse_valgrind("heap allocated", total.next()),
-        frees: parse_valgrind("heap frees", total.next()),
-        allocated_total: parse_valgrind("total heap usage", total.next())
+        allocated_at_exit: parse_output_line("in use at exit", exit.next()),
+        blocks_at_exit: parse_output_line("in use at exit blocks", exit.next()),
+        allocations: parse_output_line("heap allocated", total.next()),
+        frees: parse_output_line("heap frees", total.next()),
+        allocated_total: parse_output_line("total heap usage", total.next())
             - heap_args.subtract_bytes,
     };
 
@@ -200,20 +143,20 @@ pub fn leak(
     let mut suppressed = suppressed_cap.iter_next();
 
     let leak_summary = LeakSummary {
-        definitely_lost: parse_valgrind("definitely_lost", definite.next()),
-        definitely_lost_blocks: parse_valgrind("definitely_lost_blocks", definite.next()),
+        definitely_lost: parse_output_line("definitely_lost", definite.next()),
+        definitely_lost_blocks: parse_output_line("definitely_lost_blocks", definite.next()),
 
-        indirectly_lost: parse_valgrind("indirectly_lost", indirect.next()),
-        indrectly_lost_blocks: parse_valgrind("indirect_lost_blocks", indirect.next()),
+        indirectly_lost: parse_output_line("indirectly_lost", indirect.next()),
+        indrectly_lost_blocks: parse_output_line("indirect_lost_blocks", indirect.next()),
 
-        possibly_lost: parse_valgrind("possibly_lost", possible.next()),
-        possibly_lost_blocks: parse_valgrind("possibly_lost_blocks", possible.next()),
+        possibly_lost: parse_output_line("possibly_lost", possible.next()),
+        possibly_lost_blocks: parse_output_line("possibly_lost_blocks", possible.next()),
 
-        still_reachable: parse_valgrind("still_reachable", reachable.next()),
-        still_reachable_blocks: parse_valgrind("still_reachable_blocks", reachable.next()),
+        still_reachable: parse_output_line("still_reachable", reachable.next()),
+        still_reachable_blocks: parse_output_line("still_reachable_blocks", reachable.next()),
 
-        supressed: parse_valgrind("supressed", suppressed.next()),
-        supressed_blocks: parse_valgrind("supressed_blocks", suppressed.next()),
+        supressed: parse_output_line("supressed", suppressed.next()),
+        supressed_blocks: parse_output_line("supressed_blocks", suppressed.next()),
     };
 
     if !args.json {
@@ -237,90 +180,4 @@ pub fn leak(
     }
 
     Ok(())
-}
-
-/// Wrap a standard capture with a custom `new()` implmentation to de-depulicate code
-struct Capture<'a>(Captures<'a>);
-
-impl<'a> Capture<'a> {
-    fn new(re: &str, output: &'a str) -> Result<Self> {
-        let re = regex::Regex::new(re).expect("failed to compile regex");
-        match re.captures(output) {
-            Some(x) => Ok(Capture(x)),
-            None => Err(eyre!("No match found for regex: {}", re)),
-        }
-    }
-    /// Create an iterator over the captures but skip the fist one
-    fn iter_next(&'a self) -> SubCaptureMatches<'a, 'a> {
-        let mut x = self.iter();
-        x.next();
-        x
-    }
-}
-
-impl<'a> Deref for Capture<'a> {
-    type Target = Captures<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-pub fn warn_and_return(param_name: &str) -> i64 {
-    warn!("{} not found in valgrind output", param_name);
-    0
-}
-
-pub fn parse_valgrind(param_name: &str, param: Option<Option<Match>>) -> i64 {
-    let re_match = match param {
-        Some(x) => match x {
-            Some(x) => x,
-            None => return warn_and_return(param_name),
-        },
-        None => return warn_and_return(param_name),
-    };
-
-    let res = re_match.as_str().replace(',', "").parse::<i64>();
-    match res {
-        Ok(x) => x,
-        Err(e) => {
-            warn!("failed to parse int for param: {param_name}: {e}");
-            0
-        }
-    }
-}
-
-/// Converts bytes to human-readable values
-pub fn human_bytes(mut size: i64) -> String {
-    let mut bytes = String::new();
-    if size == 0 {
-        return "0B".to_string();
-    }
-    if size < 0 {
-        bytes.push_str("-");
-        size = -size;
-    }
-
-    let mut kb = size / 1024;
-    let b = size % 1024;
-
-    let mut mb = kb / 1024;
-    if mb > 0 {
-        kb = kb % 1024;
-    }
-    let gb = mb / 1024;
-    if gb > 0 {
-        mb = mb % 1024;
-        bytes.push_str(&format!("{gb}GB "))
-    }
-    if mb > 0 {
-        bytes.push_str(&format!("{mb}MB "))
-    }
-    if kb > 0 {
-        bytes.push_str(&format!("{kb}KB "))
-    }
-    if b > 0 {
-        bytes.push_str(&format!("{b}B"))
-    }
-    bytes
 }

@@ -1,6 +1,7 @@
 use clap::Parser;
 use color_eyre::Result;
-use prof::{check_commands, heap, leak, Commands, Prof};
+use prof::utils::check_commands;
+use prof::{heap, leak, Commands, Prof};
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 use tracing_subscriber::filter::LevelFilter;
