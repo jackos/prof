@@ -1,12 +1,12 @@
 use std::process::Command;
-use tracing::{info, warn};
+use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use clap::Parser;
 use color_eyre::{eyre::Context, Help, Result};
-use prof::{heap, Prof};
+use prof::{heap, leak, Prof};
 
 fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
@@ -26,7 +26,8 @@ fn main() -> Result<()> {
     info!("it's working");
     let prof = Prof::parse();
     match prof {
-        Prof::Heap(x) => heap(x),
+        Prof::Heap(x) => heap(x, None),
+        Prof::Leak(x) => leak(x, None),
     }
 }
 

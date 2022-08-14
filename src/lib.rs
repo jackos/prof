@@ -1,11 +1,11 @@
 use clap::{AppSettings, Args, Parser};
 use color_eyre::{
-    eyre::{bail, Context},
+    eyre::{bail, eyre, Context},
     Help, Result,
 };
-use regex::Match;
+use regex::{Captures, Match, SubCaptureMatches};
 use serde::{Deserialize, Serialize};
-use std::process::Command;
+use std::{ops::Deref, process::Command};
 use tracing::warn;
 pub fn check_commands(commands: &[&str]) -> Result<()> {
     for command in commands {
@@ -22,12 +22,29 @@ pub fn check_commands(commands: &[&str]) -> Result<()> {
 #[derive(Clone, Debug, Parser)]
 #[clap(global_setting(AppSettings::DisableHelpFlag))]
 #[clap(version)]
-#[clap(name = "cargo")]
-#[clap(bin_name = "cargo")]
+#[clap(name = "prof")]
+#[clap(bin_name = "prof")]
 pub enum Prof {
-    /// Valgrind is a memory leak detector and profiler
-    // #[clap(subcommand)]
+    /// Output the total bytes allocated and freed by the program
     Heap(Heap),
+    /// Output leaked bytes from the program
+    Leak(Leak),
+}
+
+#[derive(Args, Clone, Debug)]
+#[clap(name = "new")]
+pub struct Leak {
+    /// The binary target to profile
+    #[clap(short, long)]
+    pub bin: Option<String>,
+
+    /// Bytes allocate    /// Instead of human readable, show total bytes as a single int
+    #[clap(short, long)]
+    pub human_readable: bool,
+
+    /// Pass any additional args to the target binary with --
+    #[clap(last = true)]
+    pub target_args: Vec<String>,
 }
 
 #[derive(Args, Clone, Debug)]
@@ -51,7 +68,7 @@ pub struct Heap {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HeapUsage {
+pub struct HeapSummary {
     pub allocated_total: u64,
     pub frees: u64,
     pub allocations: u64,
@@ -60,7 +77,7 @@ pub struct HeapUsage {
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
-pub struct HeapUsageHuman {
+pub struct HeapSummaryHuman {
     pub allocated_total: String,
     pub frees: u64,
     pub allocations: u64,
@@ -68,7 +85,7 @@ pub struct HeapUsageHuman {
     pub blocks_at_exit: u64,
 }
 
-struct Leak {
+struct LeakSummary {
     definitely: u64,
     indirectly: u64,
     possibly: u64,
@@ -81,39 +98,40 @@ struct Leak {
     supressed_blocks: u64,
 }
 
-pub fn heap(heap_args: Heap) -> Result<()> {
+pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String> {
     if cfg!(target_os = "windows") {
         bail!("Valgrind is not supported on Windows");
     }
     check_commands(&["valgrind"])?;
 
     let mut command = std::process::Command::new("valgrind");
-    command.args([format!("{}", heap_args.bin.expect("provide a --bin <BIN>"))]);
+    command.args([format!("{}", bin.expect("provide a --bin <BIN>"))]);
 
-    command.args(heap_args.target_args);
+    command.args(target_args);
 
-    let res = String::from_utf8(command.output()?.stderr)?;
+    Ok(String::from_utf8(command.output()?.stderr)?)
+}
 
-    let re = regex::Regex::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)")?;
-    let exit_cap = re
-        .captures(&res)
-        .expect("could not find `in use at exit` in valgrind output");
-    let mut exit = exit_cap.iter();
-    exit.next()
-        .ok_or_else(|| warn!("no line found for `in use at exit` in valgrind output"))
-        .unwrap();
+pub fn leak(
+    mut args: Leak,
+    cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
+) -> Result<()> {
+    if let Some(cargo_fn) = cargo_fn {
+        args.bin = cargo_fn(&args.bin)?;
+    };
+    let res = valgrind(args.bin, args.target_args)?;
+    let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
+        .context("Valgrind output")?;
+    let mut exit = exit_cap.iter_next();
 
-    let re = regex::Regex::new(r".*total heap usage: ([\d|,]*)\D*([\d|,]*)\D*([\d|,]*)")?;
-    let total_cap = re
-        .captures(&res)
-        .expect("could not find heap usage in valgrind output");
-    let mut total = total_cap.iter();
-    total
-        .next()
-        .ok_or_else(|| warn!("no line found for `total heap usage` in valgrind output"))
-        .unwrap();
+    let total_cap = Capture::new(
+        r".*total heap usage: ([\d|,]*)\D*([\d|,]*)\D*([\d|,]*)",
+        &res,
+    )
+    .context("Valgrind output")?;
+    let mut total = total_cap.iter_next();
 
-    let heap_usage = HeapUsage {
+    let heap_usage = HeapSummary {
         allocated_at_exit: parse_valgrind("in use at exit", exit.next()),
         blocks_at_exit: parse_valgrind("in use at exit blocks", exit.next()),
         allocations: parse_valgrind("heap allocated", total.next()),
@@ -121,8 +139,8 @@ pub fn heap(heap_args: Heap) -> Result<()> {
         allocated_total: parse_valgrind("total heap usage", total.next()),
     };
 
-    if heap_args.human_readable {
-        let human_readble = HeapUsageHuman {
+    if args.human_readable {
+        let human_readble = HeapSummaryHuman {
             allocated_at_exit: human_bytes(heap_usage.allocated_at_exit),
             blocks_at_exit: heap_usage.blocks_at_exit,
             allocations: heap_usage.allocations,
@@ -138,6 +156,93 @@ pub fn heap(heap_args: Heap) -> Result<()> {
 
     Ok(())
 }
+
+pub fn heap(
+    mut args: Heap,
+    cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
+) -> Result<()> {
+    if let Some(cargo_fn) = cargo_fn {
+        args.bin = cargo_fn(&args.bin)?;
+    };
+    let res = valgrind(args.bin, args.target_args)?;
+    let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
+        .context("Valgrind output")?;
+    let mut exit = exit_cap.iter_next();
+
+    let total_cap = Capture::new(
+        r".*total heap usage: ([\d|,]*)\D*([\d|,]*)\D*([\d|,]*)",
+        &res,
+    )
+    .context("Valgrind output")?;
+    let mut total = total_cap.iter_next();
+
+    let heap_usage = HeapSummary {
+        allocated_at_exit: parse_valgrind("in use at exit", exit.next()),
+        blocks_at_exit: parse_valgrind("in use at exit blocks", exit.next()),
+        allocations: parse_valgrind("heap allocated", total.next()),
+        frees: parse_valgrind("heap frees", total.next()),
+        allocated_total: parse_valgrind("total heap usage", total.next()),
+    };
+
+    if args.human_readable {
+        let human_readble = HeapSummaryHuman {
+            allocated_at_exit: human_bytes(heap_usage.allocated_at_exit),
+            blocks_at_exit: heap_usage.blocks_at_exit,
+            allocations: heap_usage.allocations,
+            frees: heap_usage.frees,
+            allocated_total: human_bytes(heap_usage.allocated_total),
+        };
+        let parsed = serde_yaml::to_string(&human_readble)?;
+        println!("{parsed}");
+    } else {
+        let parsed = serde_json::to_string(&heap_usage)?;
+        println!("{parsed}");
+    }
+
+    Ok(())
+}
+
+/// Wrap a standard capture with a custom `new()` implmentation to de-depulicate code
+struct Capture<'a>(Captures<'a>);
+
+impl<'a> Capture<'a> {
+    fn new(re: &str, output: &'a str) -> Result<Self> {
+        let re = regex::Regex::new(re).expect("failed to compile regex");
+        match re.captures(output) {
+            Some(x) => Ok(Capture(x)),
+            None => Err(eyre!("No match found for regex: {}", re)),
+        }
+    }
+    /// Create an iterator over the captures but skip the fist one
+    fn iter_next(&'a self) -> SubCaptureMatches<'a, 'a> {
+        let mut x = self.iter();
+        x.next();
+        x
+    }
+}
+
+impl<'a> Deref for Capture<'a> {
+    type Target = Captures<'a>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+// pub fn regex_to_iter<'a>(re: &str, output: &'a str) -> Result<Capture<'a>> {
+//     let re = regex::Regex::new(re)?;
+//     let captures = re
+//         .captures(output)
+//         .expect("could not find heap usage in valgrind output");
+//     // total
+//     //     .next()
+//     //     .ok_or_else(|| warn!("no line found for `total heap usage` in valgrind output"))
+//     //     .unwrap();
+//     Ok(Capture {
+//         captures: re.captures(output).expect("could not find heap usage"),
+//         iter: captures.iter(),
+//     })
+// }
 
 pub fn warn_and_return(param_name: &str) -> u64 {
     warn!("{} not found in valgrind output", param_name);
