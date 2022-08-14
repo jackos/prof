@@ -14,27 +14,42 @@ Install
 ```bash
 cargo install cargo-prof
 ``` 
-JSON output with total bytes in int format
-```
+YAML output with bytes as text (human-readable)
+```bash
 cargo prof heap
 ```
-YAML output with bytes as text (human-readable)
+```yaml
+allocated_total: 2KB 119B
+frees: 11
+allocations: 11
+allocated_at_exit: 0B
+blocks_at_exit: 0
 ```
-cargo prof heap -h
+JSON outputs with total bytes
+```bash
+cargo prof heap
+```
+```json
+{"allocated_total":2167,"frees":11,"allocations":11,"allocated_at_exit":0,"blocks_at_exit":0}
 ```
 
 ### Standalone
-Runs on any binary
+Runs on any binary, e.g. this will 
 
 Install
 ```bash
 cargo install prof
 ```
-JSON output with total bytes in int format
+
+Profile `ripgrep` if `rg` is on your `path`
 ```
-prof heap --bin rg
+prof leak --bin rg
 ```
-Another command on standalone binary
+Pass `ripgrep` some arguments to stress it and see if any memory leaks 
 ```
-prof leak -hb rg 
+prof leak --bin rg -- a -uuu
+```
+Give `grep` a try as well and notice some data is leaked, even on a single file: 
+```
+prof leak --bin grep -- a Cargo.toml 
 ```
