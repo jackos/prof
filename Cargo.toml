@@ -1,3 +1,6 @@
+[workspace]
+members = ["cargo-prof"]
+
 [package]
 name = "prof"
 description = "Tools to make profiling Rust programs easier"
@@ -13,5 +16,9 @@ keywords = ["profile", "subcommmand", "profiling"]
 cargo_metadata = "0.15.0"
 clap = { version = "3.2.17", features = ["derive"] }
 color-eyre = "0.6.2"
-human_bytes = "0.3.1"
 regex = "1.6.0"
+serde = { version = "1.0.143", features = ["derive"] }
+serde_json = "1.0.83"
+serde_yaml = "0.9.9"
+tracing = { version = "0.1.36", features = ["log"] }
+tracing-subscriber = { version = "0.3.15", features = ["env-filter"] }

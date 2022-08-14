@@ -1,6 +1,6 @@
 use clap::Parser;
 use color_eyre::Result;
-use prof::{check_commands, valgrind_bytes, Prof, Valgrind, ValgrindBytes};
+use prof::{check_commands, heap, Heap, Prof};
 
 /// Tools to profile your Rust code
 #[derive(Parser)]
@@ -17,17 +17,16 @@ fn main() -> Result<()> {
         .display_env_section(false)
         .install()?;
     let Cargo::Prof(prof) = Cargo::parse();
-    let Prof::Valgrind(val) = prof;
-    match val {
-        Valgrind::Bytes(bytes_args) => cargo_valgrind_bytes(bytes_args),
+    match prof {
+        Prof::Heap(x) => cargo_valgrind_bytes(x),
     }
 }
 
-pub fn cargo_valgrind_bytes(mut bytes_args: ValgrindBytes) -> Result<()> {
+pub fn cargo_valgrind_bytes(mut bytes_args: Heap) -> Result<()> {
     check_commands(&["cargo"])?;
     cargo_prof::cargo_build(&bytes_args.bin)?;
     if bytes_args.bin.is_none() {
         bytes_args.bin = Some(cargo_prof::get_bin()?);
     }
-    valgrind_bytes(bytes_args)
+    heap(bytes_args)
 }

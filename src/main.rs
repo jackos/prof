@@ -1,35 +1,32 @@
 use std::process::Command;
+use tracing::{info, warn};
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::{EnvFilter, Registry};
 
-use clap::{Parser, Subcommand};
+use clap::Parser;
 use color_eyre::{eyre::Context, Help, Result};
-use prof::ValgrindBytes;
-
-#[derive(Clone, Debug, Parser)]
-#[clap(version)]
-#[clap(name = "cargo")]
-#[clap(bin_name = "cargo")]
-pub enum Prof {
-    /// Valgrind is a memory leak detector and profiler
-    #[clap(subcommand)]
-    Valgrind(Valgrind),
-}
-
-#[derive(Clone, Debug, Subcommand)]
-#[clap(version)]
-pub enum Valgrind {
-    /// Calculate the total bytes allocated to the heap by your program
-    Bytes(ValgrindBytes),
-}
+use prof::{heap, Prof};
 
 fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
         .display_location_section(false)
         .display_env_section(false)
         .install()?;
+
+    let subscriber = Registry::default()
+        .with(
+            EnvFilter::builder()
+                .with_default_directive(LevelFilter::INFO.into())
+                .from_env_lossy(),
+        )
+        .with(tracing_subscriber::fmt::layer());
+
+    tracing::subscriber::set_global_default(subscriber)?;
+    info!("it's working");
     let prof = Prof::parse();
-    let Prof::Valgrind(val) = prof;
-    match val {
-        Valgrind::Bytes(bytes_args) => prof::valgrind_bytes(bytes_args),
+    match prof {
+        Prof::Heap(x) => heap(x),
     }
 }
 
