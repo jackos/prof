@@ -1,4 +1,4 @@
-use clap::{AppSettings, Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 use color_eyre::{
     eyre::{bail, eyre, Context},
     Help, Result,
@@ -20,7 +20,6 @@ pub fn check_commands(commands: &[&str]) -> Result<()> {
 }
 
 #[derive(Parser, Debug)]
-#[clap(global_setting(AppSettings::DisableHelpFlag))]
 #[clap(version)]
 #[clap(name = "prof")]
 #[clap(bin_name = "prof")]
@@ -32,9 +31,9 @@ pub struct Prof {
     #[clap(short, long, global = true)]
     pub bin: Option<String>,
 
-    /// YAML output with human readable bytes. Deafults to json with total bytes
+    /// JSON output with total bytes. Deafults to YAML with human readable bytes
     #[clap(short, long, global = true)]
-    pub human_readable: bool,
+    pub json: bool,
 
     /// Pass any additional args to the target binary with --
     #[clap(last = true, global = true)]
@@ -56,41 +55,41 @@ pub struct Leak {}
 #[derive(Args, Clone, Debug)]
 #[clap(name = "new")]
 pub struct Heap {
-    /// Bytes allocated by runtime, subtracted from the final result
-    #[clap(short, long, default_value_t = 2157)]
-    pub runtime_bytes: u64,
+    /// Subtract bytes from total allocated
+    #[clap(short, long, default_value_t = 0)]
+    pub subtract_bytes: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HeapSummary {
-    pub allocated_total: u64,
-    pub frees: u64,
-    pub allocations: u64,
-    pub allocated_at_exit: u64,
-    pub blocks_at_exit: u64,
+    pub allocated_total: i64,
+    pub frees: i64,
+    pub allocations: i64,
+    pub allocated_at_exit: i64,
+    pub blocks_at_exit: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct HeapSummaryHuman {
     pub allocated_total: String,
-    pub frees: u64,
-    pub allocations: u64,
+    pub frees: i64,
+    pub allocations: i64,
     pub allocated_at_exit: String,
-    pub blocks_at_exit: u64,
+    pub blocks_at_exit: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct LeakSummary {
-    pub definitely_lost: u64,
-    pub indirectly_lost: u64,
-    pub possibly_lost: u64,
-    pub still_reachable: u64,
-    pub supressed: u64,
-    pub definitely_lost_blocks: u64,
-    pub indrectly_lost_blocks: u64,
-    pub possibly_lost_blocks: u64,
-    pub still_reachable_blocks: u64,
-    pub supressed_blocks: u64,
+    pub definitely_lost: i64,
+    pub indirectly_lost: i64,
+    pub possibly_lost: i64,
+    pub still_reachable: i64,
+    pub supressed: i64,
+    pub definitely_lost_blocks: i64,
+    pub indrectly_lost_blocks: i64,
+    pub possibly_lost_blocks: i64,
+    pub still_reachable_blocks: i64,
+    pub supressed_blocks: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -100,11 +99,11 @@ pub struct LeakSummaryHuman {
     pub possibly_lost: String,
     pub still_reachable: String,
     pub supressed: String,
-    pub definitely_lost_blocks: u64,
-    pub indrectly_lost_blocks: u64,
-    pub possibly_lost_blocks: u64,
-    pub still_reachable_blocks: u64,
-    pub supressed_blocks: u64,
+    pub definitely_lost_blocks: i64,
+    pub indrectly_lost_blocks: i64,
+    pub possibly_lost_blocks: i64,
+    pub still_reachable_blocks: i64,
+    pub supressed_blocks: i64,
 }
 
 pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String> {
@@ -147,10 +146,14 @@ pub fn heap(
         blocks_at_exit: parse_valgrind("in use at exit blocks", exit.next()),
         allocations: parse_valgrind("heap allocated", total.next()),
         frees: parse_valgrind("heap frees", total.next()),
-        allocated_total: parse_valgrind("total heap usage", total.next()),
+        allocated_total: parse_valgrind("total heap usage", total.next())
+            - heap_args.subtract_bytes,
     };
 
-    if args.human_readable {
+    if args.json {
+        let parsed = serde_json::to_string(&heap_usage)?;
+        println!("{parsed}");
+    } else {
         let human_readble = HeapSummaryHuman {
             allocated_at_exit: human_bytes(heap_usage.allocated_at_exit),
             blocks_at_exit: heap_usage.blocks_at_exit,
@@ -160,9 +163,6 @@ pub fn heap(
         };
         let parsed = serde_yaml::to_string(&human_readble)?;
         println!("{parsed}");
-    } else {
-        let parsed = serde_json::to_string(&heap_usage)?;
-        println!("{parsed}");
     }
 
     Ok(())
@@ -170,7 +170,7 @@ pub fn heap(
 
 pub fn leak(
     args: &Prof,
-    leak_args: &Leak,
+    _leak_args: &Leak,
     cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
 ) -> Result<()> {
     let mut bin = args.bin.clone();
@@ -216,7 +216,7 @@ pub fn leak(
         supressed_blocks: parse_valgrind("supressed_blocks", suppressed.next()),
     };
 
-    if args.human_readable {
+    if !args.json {
         let human_readble = LeakSummaryHuman {
             definitely_lost: human_bytes(leak_summary.definitely_lost),
             definitely_lost_blocks: leak_summary.definitely_lost,
@@ -266,27 +266,12 @@ impl<'a> Deref for Capture<'a> {
     }
 }
 
-// pub fn regex_to_iter<'a>(re: &str, output: &'a str) -> Result<Capture<'a>> {
-//     let re = regex::Regex::new(re)?;
-//     let captures = re
-//         .captures(output)
-//         .expect("could not find heap usage in valgrind output");
-//     // total
-//     //     .next()
-//     //     .ok_or_else(|| warn!("no line found for `total heap usage` in valgrind output"))
-//     //     .unwrap();
-//     Ok(Capture {
-//         captures: re.captures(output).expect("could not find heap usage"),
-//         iter: captures.iter(),
-//     })
-// }
-
-pub fn warn_and_return(param_name: &str) -> u64 {
+pub fn warn_and_return(param_name: &str) -> i64 {
     warn!("{} not found in valgrind output", param_name);
     0
 }
 
-pub fn parse_valgrind(param_name: &str, param: Option<Option<Match>>) -> u64 {
+pub fn parse_valgrind(param_name: &str, param: Option<Option<Match>>) -> i64 {
     let re_match = match param {
         Some(x) => match x {
             Some(x) => x,
@@ -295,7 +280,7 @@ pub fn parse_valgrind(param_name: &str, param: Option<Option<Match>>) -> u64 {
         None => return warn_and_return(param_name),
     };
 
-    let res = re_match.as_str().replace(',', "").parse::<u64>();
+    let res = re_match.as_str().replace(',', "").parse::<i64>();
     match res {
         Ok(x) => x,
         Err(e) => {
@@ -306,10 +291,14 @@ pub fn parse_valgrind(param_name: &str, param: Option<Option<Match>>) -> u64 {
 }
 
 /// Converts bytes to human-readable values
-pub fn human_bytes(size: u64) -> String {
+pub fn human_bytes(mut size: i64) -> String {
     let mut bytes = String::new();
     if size == 0 {
         return "0B".to_string();
+    }
+    if size < 0 {
+        bytes.push_str("-");
+        size = -size;
     }
 
     let mut kb = size / 1024;
