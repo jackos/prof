@@ -74,7 +74,7 @@ pub fn valgrind(
 
 pub fn cache(
     args: &Prof,
-    heap_args: &Cache,
+    _cache_args: &Cache,
     cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
 ) -> Result<()> {
     let mut bin = args.bin.clone();

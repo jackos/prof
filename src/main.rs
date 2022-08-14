@@ -4,7 +4,7 @@ use tracing_subscriber::{EnvFilter, Registry};
 
 use clap::Parser;
 use color_eyre::Result;
-use prof::{heap, leak, Commands, Prof};
+use prof::{cache, heap, leak, Commands, Prof};
 
 fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
@@ -26,5 +26,6 @@ fn main() -> Result<()> {
     match &prof.command {
         Commands::Heap(x) => heap(&prof, x, None),
         Commands::Leak(x) => leak(&prof, x, None),
+        Commands::Cache(x) => cache(&prof, x, None),
     }
 }
