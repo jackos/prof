@@ -34,7 +34,7 @@ cargo prof heap
 ```
 
 ### Standalone
-Runs on any binary, e.g. this will 
+Runs on any binary
 
 Install
 ```bash
@@ -45,11 +45,37 @@ Profile `ripgrep` if `rg` is on your `path`
 ```
 prof leak --bin rg
 ```
+
 Pass `ripgrep` some arguments to stress it and see if any memory leaks 
-```
+```bash
 prof leak --bin rg -- a -uuu
 ```
-Give `grep` a try as well and notice some data is leaked, even on a single file: 
+```yaml
+definitely_lost: 0B
+indirectly_lost: 0B
+possibly_lost: 528B
+still_reachable: 369KB 218B
+supressed: 0B
+definitely_lost_blocks: 0
+indrectly_lost_blocks: 0
+possibly_lost_blocks: 9
+still_reachable_blocks: 89
+supressed_blocks: 0
 ```
+
+Give `grep` a try as well and notice some data is leaked, even on a single file: 
+```bash
 prof leak --bin grep -- a Cargo.toml 
+```
+```yaml
+definitely_lost: 272B
+indirectly_lost: 352B
+possibly_lost: 128B
+still_reachable: 109KB 490B
+supressed: 0B
+definitely_lost_blocks: 272
+indrectly_lost_blocks: 11
+possibly_lost_blocks: 1
+still_reachable_blocks: 15
+supressed_blocks: 0
 ```
