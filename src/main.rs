@@ -1,10 +1,9 @@
-use std::process::Command;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use clap::Parser;
-use color_eyre::{eyre::Context, Help, Result};
+use color_eyre::Result;
 use prof::{heap, leak, Commands, Prof};
 
 fn main() -> Result<()> {
@@ -28,16 +27,4 @@ fn main() -> Result<()> {
         Commands::Heap(x) => heap(&prof, x, None),
         Commands::Leak(x) => leak(&prof, x, None),
     }
-}
-
-pub fn check_commands(commands: &[&str]) -> Result<()> {
-    for command in commands {
-        Command::new(command)
-            .output()
-            .context(format!("Command: {command} not found"))
-            .with_suggestion(|| {
-                format!("make sure {command} is installed and it's on your path: https://command-not-found.com/{command}")
-            })?;
-    }
-    Ok(())
 }

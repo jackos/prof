@@ -41,5 +41,8 @@ pub fn get_bin() -> Result<String> {
         .filter(|x| x.kind.contains(&"bin".to_string()))
         .collect();
 
-    Ok(targets.get(0).expect("no target found").name.clone())
+    Ok(format!(
+        "target/release/{}",
+        targets.get(0).expect("no target found").name.clone()
+    ))
 }

@@ -1,5 +1,5 @@
 # Prof
-This is in a very early prototyping stage. 
+This is in a very early prototyping stage and is Linux only right now.
 
 There are a lot of great tools that can profile Rust programs from the C / C++ ecosystem, this aims to wrap them in an easy-to-use CLI that will eventually be cross-platform, providing a human-readable output as well as `json` that can be piped to other tools such as UI's.
 
@@ -27,7 +27,7 @@ blocks_at_exit: 0
 ```
 JSON outputs with total bytes
 ```bash
-cargo prof heap
+cargo prof heap -j
 ```
 ```json
 {"allocated_total":2167,"frees":11,"allocations":11,"allocated_at_exit":0,"blocks_at_exit":0}

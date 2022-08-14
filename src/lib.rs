@@ -72,6 +72,7 @@ pub fn heap(
     if let Some(cargo_fn) = cargo_fn {
         bin = cargo_fn(&args.bin)?;
     };
+    dbg!(&bin);
     let res = valgrind(bin, args.target_args.clone())?;
     let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
         .context("Valgrind output")?;
@@ -120,6 +121,7 @@ pub fn leak(
     if let Some(cargo_fn) = cargo_fn {
         bin = cargo_fn(&args.bin)?;
     };
+    dbg!(&bin);
     let res = valgrind(bin, args.target_args.clone())?;
 
     let definite_cap = Capture::new(r".*definitely lost: ([\d|,]*)\D*([\d|,]*)", &res)

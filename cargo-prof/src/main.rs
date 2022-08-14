@@ -40,5 +40,7 @@ fn main() -> Result<()> {
 pub fn cargo_build(bin: &Option<String>) -> Result<Option<String>> {
     check_commands(&["cargo"])?;
     cargo_prof::cargo_build(bin)?;
-    Ok(Some(cargo_prof::get_bin()?))
+    let res = cargo_prof::get_bin()?;
+    dbg!(&res);
+    Ok(Some(res))
 }
