@@ -32,9 +32,9 @@ cargo install prof
 ```
 JSON output with total bytes in int format
 ```
-prof heap --bin mybin
+prof heap --bin rg
 ```
-YAML output with bytes as text (human-readable)
+Another command on standalone binary
 ```
-prof heap --bin mybin -h
+prof leak -hb rg 
 ```

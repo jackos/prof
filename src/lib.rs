@@ -29,15 +29,15 @@ pub struct Prof {
     pub command: Commands,
 
     /// The binary target to profile
-    #[clap(short, long)]
+    #[clap(short, long, global = true)]
     pub bin: Option<String>,
 
     /// YAML output with human readable bytes. Deafults to json with total bytes
-    #[clap(short, long)]
+    #[clap(short, long, global = true)]
     pub human_readable: bool,
 
     /// Pass any additional args to the target binary with --
-    #[clap(last = true)]
+    #[clap(last = true, global = true)]
     pub target_args: Vec<String>,
 }
 
@@ -79,17 +79,32 @@ pub struct HeapSummaryHuman {
     pub blocks_at_exit: u64,
 }
 
-struct LeakSummary {
-    definitely: u64,
-    indirectly: u64,
-    possibly: u64,
-    reachable: u64,
-    supressed: u64,
-    definitely_blocks: u64,
-    indrectly_blocks: u64,
-    possibly_blocks: u64,
-    reachable_blocks: u64,
-    supressed_blocks: u64,
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct LeakSummary {
+    pub definitely_lost: u64,
+    pub indirectly_lost: u64,
+    pub possibly_lost: u64,
+    pub still_reachable: u64,
+    pub supressed: u64,
+    pub definitely_lost_blocks: u64,
+    pub indrectly_lost_blocks: u64,
+    pub possibly_lost_blocks: u64,
+    pub still_reachable_blocks: u64,
+    pub supressed_blocks: u64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct LeakSummaryHuman {
+    pub definitely_lost: String,
+    pub indirectly_lost: String,
+    pub possibly_lost: String,
+    pub still_reachable: String,
+    pub supressed: String,
+    pub definitely_lost_blocks: u64,
+    pub indrectly_lost_blocks: u64,
+    pub possibly_lost_blocks: u64,
+    pub still_reachable_blocks: u64,
+    pub supressed_blocks: u64,
 }
 
 pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String> {
@@ -106,12 +121,11 @@ pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String>
     Ok(String::from_utf8(command.output()?.stderr)?)
 }
 
-pub fn leak(
+pub fn heap(
     args: &Prof,
-    leak_args: &Leak,
+    heap_args: &Heap,
     cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
 ) -> Result<()> {
-    dbg!(&args, &leak_args);
     let mut bin = args.bin.clone();
     if let Some(cargo_fn) = cargo_fn {
         bin = cargo_fn(&args.bin)?;
@@ -154,9 +168,9 @@ pub fn leak(
     Ok(())
 }
 
-pub fn heap(
+pub fn leak(
     args: &Prof,
-    heap_args: &Heap,
+    leak_args: &Leak,
     cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
 ) -> Result<()> {
     let mut bin = args.bin.clone();
@@ -165,37 +179,60 @@ pub fn heap(
     };
     let res = valgrind(bin, args.target_args.clone())?;
 
-    let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
+    let definite_cap = Capture::new(r".*definitely lost: ([\d|,]*)\D*([\d|,]*)", &res)
         .context("Valgrind output")?;
-    let mut exit = exit_cap.iter_next();
+    let mut definite = definite_cap.iter_next();
 
-    let total_cap = Capture::new(
-        r".*total heap usage: ([\d|,]*)\D*([\d|,]*)\D*([\d|,]*)",
-        &res,
-    )
-    .context("Valgrind output")?;
-    let mut total = total_cap.iter_next();
+    let indirect_cap = Capture::new(r".*indirectly lost: ([\d|,]*)\D*([\d|,]*)", &res)
+        .context("Valgrind output")?;
+    let mut indirect = indirect_cap.iter_next();
 
-    let heap_usage = HeapSummary {
-        allocated_at_exit: parse_valgrind("in use at exit", exit.next()),
-        blocks_at_exit: parse_valgrind("in use at exit blocks", exit.next()),
-        allocations: parse_valgrind("heap allocated", total.next()),
-        frees: parse_valgrind("heap frees", total.next()),
-        allocated_total: parse_valgrind("total heap usage", total.next()),
+    let possible_cap =
+        Capture::new(r".*possibly lost: ([\d|,]*)\D*([\d|,]*)", &res).context("Valgrind output")?;
+    let mut possible = possible_cap.iter_next();
+
+    let reachable_cap = Capture::new(r".*still reachable: ([\d|,]*)\D*([\d|,]*)", &res)
+        .context("Valgrind output")?;
+    let mut reachable = reachable_cap.iter_next();
+
+    let suppressed_cap =
+        Capture::new(r".*suppressed: ([\d|,]*)\D*([\d|,]*)", &res).context("Valgrind output")?;
+    let mut suppressed = suppressed_cap.iter_next();
+
+    let leak_summary = LeakSummary {
+        definitely_lost: parse_valgrind("definitely_lost", definite.next()),
+        definitely_lost_blocks: parse_valgrind("definitely_lost_blocks", definite.next()),
+
+        indirectly_lost: parse_valgrind("indirectly_lost", indirect.next()),
+        indrectly_lost_blocks: parse_valgrind("indirect_lost_blocks", indirect.next()),
+
+        possibly_lost: parse_valgrind("possibly_lost", possible.next()),
+        possibly_lost_blocks: parse_valgrind("possibly_lost_blocks", possible.next()),
+
+        still_reachable: parse_valgrind("still_reachable", reachable.next()),
+        still_reachable_blocks: parse_valgrind("still_reachable_blocks", reachable.next()),
+
+        supressed: parse_valgrind("supressed", suppressed.next()),
+        supressed_blocks: parse_valgrind("supressed_blocks", suppressed.next()),
     };
 
     if args.human_readable {
-        let human_readble = HeapSummaryHuman {
-            allocated_at_exit: human_bytes(heap_usage.allocated_at_exit),
-            blocks_at_exit: heap_usage.blocks_at_exit,
-            allocations: heap_usage.allocations - heap_args.runtime_bytes,
-            frees: heap_usage.frees,
-            allocated_total: human_bytes(heap_usage.allocated_total),
+        let human_readble = LeakSummaryHuman {
+            definitely_lost: human_bytes(leak_summary.definitely_lost),
+            definitely_lost_blocks: leak_summary.definitely_lost,
+            indirectly_lost: human_bytes(leak_summary.indirectly_lost),
+            indrectly_lost_blocks: leak_summary.indrectly_lost_blocks,
+            possibly_lost: human_bytes(leak_summary.possibly_lost),
+            possibly_lost_blocks: leak_summary.possibly_lost_blocks,
+            still_reachable: human_bytes(leak_summary.still_reachable),
+            still_reachable_blocks: leak_summary.still_reachable_blocks,
+            supressed: human_bytes(leak_summary.supressed),
+            supressed_blocks: leak_summary.supressed_blocks,
         };
         let parsed = serde_yaml::to_string(&human_readble)?;
         println!("{parsed}");
     } else {
-        let parsed = serde_json::to_string(&heap_usage)?;
+        let parsed = serde_json::to_string(&leak_summary)?;
         println!("{parsed}");
     }
 
@@ -271,6 +308,9 @@ pub fn parse_valgrind(param_name: &str, param: Option<Option<Match>>) -> u64 {
 /// Converts bytes to human-readable values
 pub fn human_bytes(size: u64) -> String {
     let mut bytes = String::new();
+    if size == 0 {
+        return "0B".to_string();
+    }
 
     let mut kb = size / 1024;
     let b = size % 1024;
