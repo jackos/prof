@@ -1,7 +1,7 @@
 use clap::Parser;
 use color_eyre::Result;
 use prof::utils::check_commands;
-use prof::{heap, leak, Commands, Prof};
+use prof::{cache, heap, leak, Commands, Prof};
 use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 use tracing_subscriber::filter::LevelFilter;
@@ -34,6 +34,7 @@ fn main() -> Result<()> {
     match &prof.command {
         Commands::Heap(x) => heap(&prof, x, Some(cargo_build)),
         Commands::Leak(x) => leak(&prof, x, Some(cargo_build)),
+        Commands::Cache(x) => cache(&prof, x, Some(cargo_build)),
     }
 }
 
@@ -41,6 +42,5 @@ pub fn cargo_build(bin: &Option<String>) -> Result<Option<String>> {
     check_commands(&["cargo"])?;
     cargo_prof::cargo_build(bin)?;
     let res = cargo_prof::get_bin()?;
-    dbg!(&res);
     Ok(Some(res))
 }

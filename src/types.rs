@@ -45,3 +45,12 @@ pub struct LeakSummaryHuman {
     pub still_reachable_blocks: i64,
     pub supressed_blocks: i64,
 }
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+pub struct CacheMiss {
+    pub i1_miss: f64,
+    pub l2i_miss: f64,
+    pub d1_miss: f64,
+    pub l2d_miss: f64,
+    pub l2_miss: f64,
+}

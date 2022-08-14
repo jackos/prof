@@ -47,6 +47,11 @@ pub fn warn_and_return(param_name: &str) -> i64 {
     0
 }
 
+pub fn warn_and_return_f64(param_name: &str) -> f64 {
+    warn!("{} not found in valgrind output", param_name);
+    0.0
+}
+
 pub fn check_commands(commands: &[&str]) -> Result<()> {
     for command in commands {
         Command::new(command)
@@ -74,6 +79,25 @@ pub fn parse_output_line(param_name: &str, param: Option<Option<Match>>) -> i64 
         Err(e) => {
             warn!("failed to parse int for param: {param_name}: {e}");
             0
+        }
+    }
+}
+
+pub fn parse_output_line_f64(param_name: &str, param: Option<Option<Match>>) -> f64 {
+    let re_match = match param {
+        Some(x) => match x {
+            Some(x) => x,
+            None => return warn_and_return_f64(param_name),
+        },
+        None => return warn_and_return_f64(param_name),
+    };
+
+    let res = re_match.as_str().parse::<f64>();
+    match res {
+        Ok(x) => x,
+        Err(e) => {
+            warn!("failed to parse int for param: {param_name}: {e}");
+            0.0
         }
     }
 }

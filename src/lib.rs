@@ -4,8 +4,8 @@ pub mod utils;
 use clap::{Args, Parser, Subcommand};
 use color_eyre::eyre::{bail, Context};
 use color_eyre::Result;
-use types::{HeapSummary, LeakSummary};
-use utils::{check_commands, parse_output_line, Capture};
+use types::{CacheMiss, HeapSummary, LeakSummary};
+use utils::{check_commands, parse_output_line, parse_output_line_f64, Capture};
 
 use crate::types::{HeapSummaryHuman, LeakSummaryHuman};
 use crate::utils::human_bytes;
@@ -37,10 +37,15 @@ pub enum Commands {
     Heap(Heap),
     /// Output leaked bytes from the program
     Leak(Leak),
+    /// Check cache miss rates
+    Cache(Cache),
 }
 
 #[derive(Args, Clone, Debug)]
 pub struct Leak {}
+
+#[derive(Args, Clone, Debug)]
+pub struct Cache {}
 
 #[derive(Args, Clone, Debug)]
 pub struct Heap {
@@ -49,18 +54,70 @@ pub struct Heap {
     pub subtract_bytes: i64,
 }
 
-pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String> {
+pub fn valgrind(
+    bin: Option<String>,
+    target_args: Vec<String>,
+    valgrind_args: Vec<&str>,
+) -> Result<String> {
     if cfg!(target_os = "windows") {
         bail!("Valgrind is not supported on Windows");
     }
     check_commands(&["valgrind"])?;
-
     let mut command = std::process::Command::new("valgrind");
+    command.args(valgrind_args);
     command.args([format!("{}", bin.expect("provide a --bin <BIN>"))]);
 
     command.args(target_args);
 
     Ok(String::from_utf8(command.output()?.stderr)?)
+}
+
+pub fn cache(
+    args: &Prof,
+    heap_args: &Cache,
+    cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
+) -> Result<()> {
+    let mut bin = args.bin.clone();
+    if let Some(cargo_fn) = cargo_fn {
+        bin = cargo_fn(&args.bin)?;
+    };
+    let output = valgrind(bin, args.target_args.clone(), vec!["--tool=cachegrind"])?;
+
+    let i1_cap =
+        Capture::new(r"I1\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut i1 = i1_cap.iter_next();
+
+    let l2i_cap =
+        Capture::new(r"LLi\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut l2i = l2i_cap.iter_next();
+
+    let d1_cap =
+        Capture::new(r"D1\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut d1 = d1_cap.iter_next();
+
+    let l2d_cap =
+        Capture::new(r"LLd\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut l2d = l2d_cap.iter_next();
+
+    let l2_cap =
+        Capture::new(r"LL\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut l2 = l2_cap.iter_next();
+
+    let cache_miss = CacheMiss {
+        i1_miss: parse_output_line_f64("i1 miss rate", i1.next()),
+        l2i_miss: parse_output_line_f64("i1 miss rate", l2i.next()),
+        d1_miss: parse_output_line_f64("i1 miss rate", d1.next()),
+        l2d_miss: parse_output_line_f64("i1 miss rate", l2d.next()),
+        l2_miss: parse_output_line_f64("i1 miss rate", l2.next()),
+    };
+
+    if args.json {
+        println!("{}", serde_json::to_string(&cache_miss)?);
+    } else {
+        println!("{}", serde_yaml::to_string(&cache_miss)?);
+    }
+
+    Ok(())
 }
 
 pub fn heap(
@@ -72,15 +129,14 @@ pub fn heap(
     if let Some(cargo_fn) = cargo_fn {
         bin = cargo_fn(&args.bin)?;
     };
-    dbg!(&bin);
-    let res = valgrind(bin, args.target_args.clone())?;
-    let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
+    let output = valgrind(bin, args.target_args.clone(), Vec::new())?;
+    let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &output)
         .context("Valgrind output")?;
     let mut exit = exit_cap.iter_next();
 
     let total_cap = Capture::new(
         r".*total heap usage: ([\d|,]*)\D*([\d|,]*)\D*([\d|,]*)",
-        &res,
+        &output,
     )
     .context("Valgrind output")?;
     let mut total = total_cap.iter_next();
@@ -121,8 +177,7 @@ pub fn leak(
     if let Some(cargo_fn) = cargo_fn {
         bin = cargo_fn(&args.bin)?;
     };
-    dbg!(&bin);
-    let res = valgrind(bin, args.target_args.clone())?;
+    let res = valgrind(bin, args.target_args.clone(), Vec::new())?;
 
     let definite_cap = Capture::new(r".*definitely lost: ([\d|,]*)\D*([\d|,]*)", &res)
         .context("Valgrind output")?;
