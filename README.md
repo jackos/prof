@@ -1,10 +1,7 @@
 # Prof
 This is in a very early prototyping stage, there are a lot of great tools that can profile Rust programs from the C / C++ ecosystem.
 
-I always forget the commands to run and have to look them up in my notes, and tools like Valgrind don't have great outputs for piping to other programs, this will make it a lot easier to run the commands, and pipe the results to other tools like UI's.
-
-
-Run commands to profile your Rust program
+The problem is the commands are difficult to remember, this tool aims to remedy that and provide outputs like JSON that can be piped to other tools like UI's.
 
 ## Quickstart
 
