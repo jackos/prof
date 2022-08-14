@@ -1,9 +1,13 @@
 # Prof
-This is in a very early prototyping stage and is Linux only right now.
+This is in a very early prototyping stage and is Linux only right now, unless you're running in a docker container with `valgrind` installed.
 
-There are a lot of great tools that can profile Rust programs from the C / C++ ecosystem, this aims to wrap them in an easy-to-use CLI that will eventually be cross-platform, providing a human-readable output as well as `json` that can be piped to other tools such as UI's.
+This aims to wrap profiling tools from the C/C++ ecosystem in an easy-to-use CLI that will eventually be cross-platform, providing a human-readable output as well as `json` that can be piped to other tools such as UI's.
 
 ## Quickstart
+### Requirement
+[valgrind](https://command-not-found.com/valgrind)
+
+If not installed the program will print the above link.
 
 There are two versions:
 
