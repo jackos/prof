@@ -1,13 +1,15 @@
 use clap::Parser;
 use color_eyre::Result;
-use prof::{check_commands, heap, leak, Prof};
+use prof::{check_commands, heap, leak, Commands, Prof};
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
+
+use tracing_subscriber::filter::LevelFilter;
 
 /// Tools to profile your Rust code
 #[derive(Parser)]
 #[clap(name = "cargo")]
 #[clap(bin_name = "cargo")]
 enum Cargo {
-    #[clap(subcommand)]
     Prof(Prof),
 }
 
@@ -16,10 +18,21 @@ fn main() -> Result<()> {
         .display_location_section(false)
         .display_env_section(false)
         .install()?;
+
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
+
+    let subscriber = Registry::default()
+        .with(env_filter)
+        .with(tracing_subscriber::fmt::layer());
+
+    tracing::subscriber::set_global_default(subscriber)?;
     let Cargo::Prof(prof) = Cargo::parse();
-    match prof {
-        Prof::Heap(x) => heap(x, Some(cargo_build)),
-        Prof::Leak(x) => leak(x, Some(cargo_build)),
+
+    match &prof.command {
+        Commands::Heap(x) => heap(&prof, x, Some(cargo_build)),
+        Commands::Leak(x) => leak(&prof, x, Some(cargo_build)),
     }
 }
 

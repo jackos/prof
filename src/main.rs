@@ -1,12 +1,11 @@
 use std::process::Command;
-use tracing::info;
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::{EnvFilter, Registry};
 
 use clap::Parser;
 use color_eyre::{eyre::Context, Help, Result};
-use prof::{heap, leak, Prof};
+use prof::{heap, leak, Commands, Prof};
 
 fn main() -> Result<()> {
     color_eyre::config::HookBuilder::default()
@@ -14,20 +13,20 @@ fn main() -> Result<()> {
         .display_env_section(false)
         .install()?;
 
+    let env_filter = EnvFilter::builder()
+        .with_default_directive(LevelFilter::INFO.into())
+        .from_env_lossy();
+
     let subscriber = Registry::default()
-        .with(
-            EnvFilter::builder()
-                .with_default_directive(LevelFilter::INFO.into())
-                .from_env_lossy(),
-        )
+        .with(env_filter)
         .with(tracing_subscriber::fmt::layer());
 
     tracing::subscriber::set_global_default(subscriber)?;
-    info!("it's working");
     let prof = Prof::parse();
-    match prof {
-        Prof::Heap(x) => heap(x, None),
-        Prof::Leak(x) => leak(x, None),
+
+    match &prof.command {
+        Commands::Heap(x) => heap(&prof, x, None),
+        Commands::Leak(x) => leak(&prof, x, None),
     }
 }
 

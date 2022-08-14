@@ -1,4 +1,4 @@
-use clap::{AppSettings, Args, Parser};
+use clap::{AppSettings, Args, Parser, Subcommand};
 use color_eyre::{
     eyre::{bail, eyre, Context},
     Help, Result,
@@ -19,12 +19,30 @@ pub fn check_commands(commands: &[&str]) -> Result<()> {
     Ok(())
 }
 
-#[derive(Clone, Debug, Parser)]
+#[derive(Parser, Debug)]
 #[clap(global_setting(AppSettings::DisableHelpFlag))]
 #[clap(version)]
 #[clap(name = "prof")]
 #[clap(bin_name = "prof")]
-pub enum Prof {
+pub struct Prof {
+    #[clap(subcommand)]
+    pub command: Commands,
+
+    /// The binary target to profile
+    #[clap(short, long)]
+    pub bin: Option<String>,
+
+    /// YAML output with human readable bytes. Deafults to json with total bytes
+    #[clap(short, long)]
+    pub human_readable: bool,
+
+    /// Pass any additional args to the target binary with --
+    #[clap(last = true)]
+    pub target_args: Vec<String>,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum Commands {
     /// Output the total bytes allocated and freed by the program
     Heap(Heap),
     /// Output leaked bytes from the program
@@ -33,38 +51,14 @@ pub enum Prof {
 
 #[derive(Args, Clone, Debug)]
 #[clap(name = "new")]
-pub struct Leak {
-    /// The binary target to profile
-    #[clap(short, long)]
-    pub bin: Option<String>,
-
-    /// Bytes allocate    /// Instead of human readable, show total bytes as a single int
-    #[clap(short, long)]
-    pub human_readable: bool,
-
-    /// Pass any additional args to the target binary with --
-    #[clap(last = true)]
-    pub target_args: Vec<String>,
-}
+pub struct Leak {}
 
 #[derive(Args, Clone, Debug)]
 #[clap(name = "new")]
 pub struct Heap {
-    /// The binary target to profile
-    #[clap(short, long)]
-    pub bin: Option<String>,
-
     /// Bytes allocated by runtime, subtracted from the final result
     #[clap(short, long, default_value_t = 2157)]
-    pub runtime_bytes: i64,
-
-    /// Instead of human readable, show total bytes as a single int
-    #[clap(short, long)]
-    pub human_readable: bool,
-
-    /// Pass any additional args to the target binary with --
-    #[clap(last = true)]
-    pub target_args: Vec<String>,
+    pub runtime_bytes: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]
@@ -113,13 +107,16 @@ pub fn valgrind(bin: Option<String>, target_args: Vec<String>) -> Result<String>
 }
 
 pub fn leak(
-    mut args: Leak,
+    args: &Prof,
+    leak_args: &Leak,
     cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
 ) -> Result<()> {
+    dbg!(&args, &leak_args);
+    let mut bin = args.bin.clone();
     if let Some(cargo_fn) = cargo_fn {
-        args.bin = cargo_fn(&args.bin)?;
+        bin = cargo_fn(&args.bin)?;
     };
-    let res = valgrind(args.bin, args.target_args)?;
+    let res = valgrind(bin, args.target_args.clone())?;
     let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
         .context("Valgrind output")?;
     let mut exit = exit_cap.iter_next();
@@ -158,13 +155,16 @@ pub fn leak(
 }
 
 pub fn heap(
-    mut args: Heap,
+    args: &Prof,
+    heap_args: &Heap,
     cargo_fn: Option<fn(bin: &Option<String>) -> Result<Option<String>>>,
 ) -> Result<()> {
+    let mut bin = args.bin.clone();
     if let Some(cargo_fn) = cargo_fn {
-        args.bin = cargo_fn(&args.bin)?;
+        bin = cargo_fn(&args.bin)?;
     };
-    let res = valgrind(args.bin, args.target_args)?;
+    let res = valgrind(bin, args.target_args.clone())?;
+
     let exit_cap = Capture::new(r".*in use at exit\D*([\d|,]*)\D*([\d|,]*)", &res)
         .context("Valgrind output")?;
     let mut exit = exit_cap.iter_next();
@@ -188,7 +188,7 @@ pub fn heap(
         let human_readble = HeapSummaryHuman {
             allocated_at_exit: human_bytes(heap_usage.allocated_at_exit),
             blocks_at_exit: heap_usage.blocks_at_exit,
-            allocations: heap_usage.allocations,
+            allocations: heap_usage.allocations - heap_args.runtime_bytes,
             frees: heap_usage.frees,
             allocated_total: human_bytes(heap_usage.allocated_total),
         };
