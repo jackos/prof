@@ -79,3 +79,29 @@ possibly_lost_blocks: 1
 still_reachable_blocks: 15
 supressed_blocks: 0
 ```
+
+## Other Commands
+Other than `leak` and `heap` there is also `cache` for cache misses from `cachegrind` as percentages:
+```bash
+cargo prof cache
+```
+```yaml
+l1i: 0.36
+l1d: 3.0
+lli: 0.34
+lld: 2.6
+llt: 1.0
+```
+- l1i: percentage of level 1 cache instruction misses
+- l1d: percentage of level 1 cache data misses 
+- lli: percentage of last level cache instruction misses (e.g. L3)
+- lld: percentage of last level cache data misses (e.g. L3)
+- llt: percentage of last level total cache misses 
+
+You can see a visual diagram of your cache levels with the command: `lstopo`
+
+For more information on these numbers mean see official docs:
+
+https://valgrind.org/docs/manual/cg-manual.html
+
+Or for a good description on what a cache miss is, check out this great talk from Andrew Kelley the creator of Zig: https://vimeo.com/handmadeseattle/practical-data-oriented-design#t=280s

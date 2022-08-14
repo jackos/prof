@@ -85,30 +85,30 @@ pub fn cache(
 
     let i1_cap =
         Capture::new(r"I1\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
-    let mut i1 = i1_cap.iter_next();
+    let mut l1i_miss = i1_cap.iter_next();
 
     let l2i_cap =
-        Capture::new(r"LLi\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
-    let mut l2i = l2i_cap.iter_next();
+        Capture::new(r"L[L|2]i\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut lli_miss = l2i_cap.iter_next();
 
     let d1_cap =
         Capture::new(r"D1\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
-    let mut d1 = d1_cap.iter_next();
+    let mut l1d_miss = d1_cap.iter_next();
 
     let l2d_cap =
-        Capture::new(r"LLd\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
-    let mut l2d = l2d_cap.iter_next();
+        Capture::new(r"L[L|2]d\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut lld_miss = l2d_cap.iter_next();
 
     let l2_cap =
-        Capture::new(r"LL\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
-    let mut l2 = l2_cap.iter_next();
+        Capture::new(r"L[L|2]\s*miss rate:\s*([\d|\.]*)", &output).context("Cachegrind output")?;
+    let mut ll_total_miss = l2_cap.iter_next();
 
     let cache_miss = CacheMiss {
-        i1_miss: parse_output_line_f64("i1 miss rate", i1.next()),
-        l2i_miss: parse_output_line_f64("i1 miss rate", l2i.next()),
-        d1_miss: parse_output_line_f64("i1 miss rate", d1.next()),
-        l2d_miss: parse_output_line_f64("i1 miss rate", l2d.next()),
-        l2_miss: parse_output_line_f64("i1 miss rate", l2.next()),
+        l1i: parse_output_line_f64("l1i miss rate", l1i_miss.next()),
+        l1d: parse_output_line_f64("l1d miss rate", l1d_miss.next()),
+        lli: parse_output_line_f64("lli miss rate", lli_miss.next()),
+        lld: parse_output_line_f64("lld miss rate", lld_miss.next()),
+        llt: parse_output_line_f64("ilt miss rate", ll_total_miss.next()),
     };
 
     if args.json {
